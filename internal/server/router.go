@@ -6,6 +6,9 @@ import ("net/http"
 
 func NewRouter() http.Handler {
 	mux := http.NewServeMux()
+	reg := tunnel.NewRegistry()
+	wsServer := NewWSServer(reg)
+
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 	//	fmt.Printf("Received health check from %s\n", r.RemoteAddr)
