@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"log"
 	"net/http"
 
@@ -9,6 +8,7 @@ import (
 
 	"nhooyr.io/websocket"
 )
+
 
 type WSServer struct {
 	registry *tunnel.Registry
@@ -25,27 +25,18 @@ func (s *WSServer) HandleConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
-		InsecureSkipVerify: true, 
-	})
+	conn, err := websocket.Accept(w, r, nil)
 	if err != nil {
-		log.Printf("ws accept error: %v", err)
 		return
 	}
 
+	session := tunnel.NewSession(conn)
 	log.Printf("🔌 tunnel connected: %s", id)
-	s.registry.Register(id, conn)
+	s.registry.Register(id, session)
 
-	ctx := context.Background()
-
-	
-	for {
-		_, _, err := conn.Read(ctx)
-		if err != nil {
-			break
-		}
-	}
-
-	log.Printf(" tunnel disconnected: %s", id)
-	s.registry.Unregister(id)
+	go func() {
+		err := session.ReadLoop()
+		log.Printf(" tunnel disconnected: %s (%v)", id, err)
+		s.registry.Unregister(id)
+	}()
 }

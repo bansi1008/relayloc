@@ -8,6 +8,8 @@ func NewRouter() http.Handler {
 	mux := http.NewServeMux()
 	reg := tunnel.NewRegistry()
 	wsServer := NewWSServer(reg)
+	httpServer := NewHTTPServer(reg)
+
 
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -17,5 +19,6 @@ func NewRouter() http.Handler {
     })
 	})
    mux.HandleFunc("/connect", wsServer.HandleConnect)
+	mux.HandleFunc("/t/", httpServer.HandleProxy)
 	return mux
 }
