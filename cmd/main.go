@@ -2,34 +2,27 @@ package main
 
 import (
 	"log"
-	"net/http"
 	"os"
-	"time"
+	"os/signal"
+	"syscall"
 
 	"relaygo/internal/server"
-	"github.com/joho/godotenv"
-
-
 )
 
 func main() {
-	godotenv.Load()
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
+	srv := server.New(":8080")
 
-	srv := &http.Server{
-		Addr:         ":" + port,
-		Handler:      server.NewRouter(),
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
+	go func() {
+		if err := srv.Start(); err != nil {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
 
-	log.Printf(" Relay listening on :%s\n", port)
+	c := make(chan os.Signal, 1)
+	//
+	// 	signal.Notify(c, os.Interrupt)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	<-c
 
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("relay crashed: %v", err)
-	}
+	log.Println("Shutting down relay server")
 }
