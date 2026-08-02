@@ -7,8 +7,6 @@ import (
 
 func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "Hello from relay server!")
+		fmt.Fprintln(w, "Hello from agent server!")
 	})
-
-	s.mux.HandleFunc("/ws", s.wsHandler.Handle)
 }
