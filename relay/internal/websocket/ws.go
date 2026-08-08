@@ -5,13 +5,17 @@ import (
 	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
+	"relaygo/relay/internal/tunnel"
 )
 
 type Handler struct {
+	registry *tunnel.Registry
 }
 
-func NewHandler() *Handler {
-	return &Handler{}
+func NewHandler(registry *tunnel.Registry) *Handler {
+	return &Handler{
+		registry: registry,
+	}
 }
 
 var upgrader = websocket.Upgrader{
@@ -30,15 +34,15 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	log.Printf("Agent connected from %s", r.RemoteAddr)
-	for {
-		_, msggg, err := conn.ReadMessage()
-		err = conn.WriteMessage(websocket.TextMessage, []byte("Hello from relay server!"))
-		log.Printf("Received message from %s: %s", string(msggg))
+	session := tunnel.NewSession(conn, h.registry)
 
-		if err != nil {
-			log.Println("Error reading message:", err)
-			break
+	go func() {
+		if err := session.InitPing(); err != nil {
+			log.Printf("heartbeat stopped: %v", err)
 		}
+	}()
+	if err := session.ReadLoop(); err != nil {
+		log.Printf("Read error: %v", err)
 	}
 
 }

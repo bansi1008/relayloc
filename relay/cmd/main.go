@@ -6,17 +6,22 @@ import (
 	"os/signal"
 	"syscall"
 
-	"relaygo/internal/server"
+	"relaygo/relay/internal/server"
+	
 )
 
 func main() {
 	srv := server.New(":8080")
+	
+
 
 	go func() {
 		if err := srv.Start(); err != nil {
 			log.Fatalf("server error: %v", err)
 		}
+	
 	}()
+
 
 	c := make(chan os.Signal, 1)
 	//
