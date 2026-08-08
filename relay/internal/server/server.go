@@ -3,22 +3,26 @@ package server
 import (
 	"log"
 	"net/http"
-	"relaygo/internal/websocket"
+	"relaygo/relay/internal/tunnel"
+	"relaygo/relay/internal/websocket"
 )
 
 type Server struct {
 	mux       *http.ServeMux
 	wsHandler *websocket.Handler
 	addr      string
+	registry  *tunnel.Registry
 }
 
 func New(addr string) *Server {
 	mux := http.NewServeMux()
+	registry := tunnel.NewRegistry()
 
 	s := &Server{
 		addr:      addr,
 		mux:       mux,
-		wsHandler: websocket.NewHandler(),
+		registry:  registry,
+		wsHandler: websocket.NewHandler(registry),
 	}
 
 	s.registerRoutes()
