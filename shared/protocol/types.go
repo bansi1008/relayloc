@@ -9,3 +9,7 @@ const (
 	Ping FType = "PING"
 	Pong FType = "PONG"
 )
+const (
+	HTTPReqFrame = "HTTP_REQUEST"
+	HTTPResFrame = "HTTP_RESPONSE"
+)
