@@ -5,37 +5,55 @@ import (
 	"testing"
 )
 
-func TestEncode(t *testing.T) {
-	p, err:=json.Marshal("agent-1")
-	if err != nil {
-		t.Error(err)
+func TestHTTPRequestFrame(t *testing.T) {
+	req := HTTPReq{
+		ID:     "req-123",
+		Method: "GET",
+		Path:   "/hello",
+		Header: map[string]string{
+			"Host": "example.com",
+		},
 	}
+
+	payload, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	frame := Frame{
-		Type: RegisterAgent,
-		Payload: p,
+		Type:    HTTPReqFrame,
+		Payload: payload,
 	}
 
 	b, err := Encode(frame)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
 	decoded, err := Decode(b)
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
 
-	if decoded.Type != RegisterAgent {
-		t.Errorf("expected type %s, got %s", RegisterAgent, decoded.Type)
+	if decoded.Type != HTTPReqFrame {
+		t.Errorf("expected %s, got %s", HTTPReqFrame, decoded.Type)
 	}
 
-	var name string
-	if err := json.Unmarshal(decoded.Payload, &name); err != nil {
-    	t.Error(err)
+	var decodedReq HTTPReq
+
+	if err := json.Unmarshal(decoded.Payload, &decodedReq); err != nil {
+		t.Fatal(err)
 	}
 
-	if name != "agent-1" {
-    	t.Errorf("expected payload name %s, got %s", "agent-1", name)
+	if decodedReq.ID != "req-123" {
+		t.Errorf("expected ID req-123, got %s", decodedReq.ID)
 	}
 
-}	
+	if decodedReq.Method != "GET" {
+		t.Errorf("expected GET, got %s", decodedReq.Method)
+	}
+
+	if decodedReq.Path != "/hello" {
+		t.Errorf("expected /hello, got %s", decodedReq.Path)
+	}
+}
