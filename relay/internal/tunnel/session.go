@@ -84,15 +84,47 @@ func (s *Session) ReadLoop() error {
 			//log.Println("mapppp", sess, ok)
 
 			fmt.Printf("Agent registered: %s\n", name)
+			payload, err := json.Marshal(id)
 
 			if err := s.WriteFrame(protocol.Frame{
-				Type: protocol.Registered,
+				Type:    protocol.Registered,
+				Payload: payload,
 			}); err != nil {
 				log.Printf("Error writing ping: %v", err)
 				return err
 			}
 		case protocol.Pong:
-			fmt.Println("got pong ")
+			fmt.Println("got pong send test")
+			session, ok := s.registry.Get(s.id)
+			if !ok {
+				log.Print("id not found")
+				continue
+			}
+
+			req := protocol.HTTPReq{
+				ID:     "req-1-test",
+				Method: "Get",
+				Path:   "/test",
+			}
+			payload, err := json.Marshal(req)
+			if err != nil {
+				return err
+			}
+			if err := session.WriteFrame(protocol.Frame{
+				Type:    protocol.HTTPReqFrame,
+				Payload: payload,
+			}); err != nil {
+				return err
+			}
+		case protocol.HTTPResFrame:
+			log.Println("got res from agent")
+
+			var res protocol.HTTPRes
+			if err := json.Unmarshal(frame.Payload, &res); err != nil {
+				return err
+			}
+			log.Printf("HTTP res received: %d %s", res.Status, res.Body)
+
 		}
 
 	}
@@ -128,7 +160,7 @@ func (s *Session) WriteFrame(frame protocol.Frame) error {
 }
 
 func (s *Session) InitPing() error {
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
