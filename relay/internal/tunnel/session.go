@@ -24,8 +24,9 @@ type Session struct {
 
 func NewSession(conn *websocket.Conn, registry *Registry) *Session {
 	return &Session{
-		conn:     conn,
-		registry: registry,
+		conn:      conn,
+		registry:  registry,
+		responses: make(map[string]chan []byte),
 	}
 }
 
@@ -83,7 +84,7 @@ func (s *Session) ReadLoop() error {
 			//sess, ok := s.registry.Get(id)
 			//log.Println("mapppp", sess, ok)
 
-			fmt.Printf("Agent registered: %s\n", name)
+			fmt.Printf("Agent registered: %s\n", id)
 			payload, err := json.Marshal(id)
 
 			if err := s.WriteFrame(protocol.Frame{
@@ -124,7 +125,7 @@ func (s *Session) ReadLoop() error {
 				return err
 			}
 			log.Printf("HTTP res received: %d %s", res.Status, res.Body)
-
+			s.Resolve(res.ID, frame.Payload)
 		}
 
 	}
@@ -160,7 +161,7 @@ func (s *Session) WriteFrame(frame protocol.Frame) error {
 }
 
 func (s *Session) InitPing() error {
-	ticker := time.NewTicker(10 * time.Second)
+	ticker := time.NewTicker(100 * time.Minute)
 	defer ticker.Stop()
 
 	for range ticker.C {
