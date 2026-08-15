@@ -11,4 +11,5 @@ func (s *Server) registerRoutes() {
 	})
 
 	s.mux.HandleFunc("/ws", s.wsHandler.Handle)
+	s.mux.HandleFunc("/tunnel/{id}/{path...}", s.Proxy)
 }
