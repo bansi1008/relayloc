@@ -2,7 +2,9 @@ package client
 
 import (
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 
 	"github.com/gorilla/websocket"
 
@@ -89,11 +91,37 @@ func (c *Client) Read() error {
 
 			}
 			log.Printf("HTTP request received: %s %s", req.Method, req.Path)
+			httpReq, err := http.NewRequest(
+				req.Method,
+				"http://localhost:3000"+req.Path,
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			resp, err := http.DefaultClient.Do(httpReq)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				return err
+			}
+
+			headers := make(map[string]string)
+
+			for key, values := range resp.Header {
+				if len(values) > 0 {
+					headers[key] = values[0]
+				}
+			}
+
 			res := protocol.HTTPRes{
 				ID:     req.ID,
-				Status: 200,
-				Header: map[string]string{},
-				Body:   []byte("Hello from agent"),
+				Status: resp.StatusCode,
+				Header: headers,
+				Body:   body,
 			}
 			payload, err := json.Marshal(res)
 			if err != nil {
