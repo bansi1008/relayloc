@@ -195,18 +195,71 @@ This project is still under active development. Here's what's done and what's pl
 - [x] Request/response correlation via unique request IDs
 - [x] Multi-module Go workspace
 
-### 🔜 Planned
-- [ ] HTTPS/TLS support
-- [ ] Authentication & access control
-- [ ] Custom subdomain support (e.g., `myapp.relay.example.com`)
-- [ ] Request body forwarding (POST, PUT, etc.)
-- [ ] WebSocket passthrough (tunnel WebSocket connections)
-- [ ] Connection reconnection & retry logic
-- [ ] Rate limiting & abuse prevention
-- [ ] Dashboard / admin UI
-- [ ] CLI flags & configuration file support
-- [ ] Docker deployment
-- [ ] Comprehensive test coverage
+### 🔮 Future Architecture
+
+The current implementation intentionally favours simplicity and debuggability: JSON-framed messages are transported over a persistent WebSocket connection.
+
+As RelayGo evolves, I plan to evaluate different architectural approaches rather than assuming a single technology is the right solution. The goal is to understand and measure the trade-offs between **simplicity, performance, reliability, scalability, and operational complexity**.
+
+Some of the areas I plan to explore:
+
+#### Protocol Evolution
+
+- [ ] Evaluate **Protocol Buffers (Protobuf)** vs the current JSON protocol
+- [ ] Define a versioned `.proto` schema for relay ↔ agent communication
+- [ ] Evaluate **gRPC** and other RPC/transport options where appropriate
+- [ ] Support protocol version negotiation
+- [ ] Add backward compatibility between protocol versions
+- [ ] Benchmark JSON vs Protobuf for latency, throughput, and message size
+
+#### Tunnel & Transport
+
+- [ ] Separate tunnel transport from the application protocol
+- [ ] Support multiplexing multiple requests over a single connection
+- [ ] Improve connection lifecycle management
+- [ ] Automatic agent reconnection
+- [ ] Request timeout and cancellation propagation
+- [ ] Backpressure handling
+- [ ] Graceful connection draining
+
+#### Reliability & Scalability
+
+- [ ] Persistent agent identity
+- [ ] Evaluate distributed tunnel registry
+- [ ] Evaluate Redis-backed session/state management
+- [ ] Multiple relay server support
+- [ ] Load balancing between relay nodes
+- [ ] Horizontal scaling
+- [ ] Observability: structured logging, metrics, and tracing
+
+#### Security
+
+- [ ] TLS between agent and relay
+- [ ] Agent authentication
+- [ ] Token-based tunnel authentication
+- [ ] Access control
+- [ ] Rate limiting
+- [ ] Request/connection limits
+- [ ] Secure tunnel IDs and lifecycle management
+
+#### Developer Experience
+
+- [ ] Production-ready CLI
+- [ ] Configuration files
+- [ ] `relaygo start` style commands
+- [ ] Custom domains/subdomains
+- [ ] Dashboard for active tunnels and requests
+- [ ] Docker images
+- [ ] Kubernetes deployment support
+
+#### Performance
+
+- [ ] Benchmark concurrent tunnel connections
+- [ ] Benchmark request throughput
+- [ ] Benchmark memory usage under concurrent load
+- [ ] Reduce protocol overhead
+- [ ] Evaluate connection pooling where appropriate
+- [ ] Stream request/response bodies instead of buffering entire responses
 
 ---
 
@@ -216,4 +269,4 @@ TBD
 
 ---
 
-> **Note**: This is a learning/experimental project. Contributions and feedback are welcome!
+> **Note:** RelayGo is currently an experimental project under active development. The architecture is intentionally evolving as I benchmark, test, and evaluate different approaches to networking, concurrency, reliability, and scalability.
