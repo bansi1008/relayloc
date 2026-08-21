@@ -59,8 +59,8 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Response Content-Type: %q", res.Header["Content-Type"])
-	log.Printf("Response headers: %+v", res.Header)
+	//log.Printf("Response Content-Type: %q", res.Header["Content-Type"])
+	//log.Printf("Response headers: %+v", res.Header)
 
 	for key, value := range res.Header {
 		w.Header().Set(key, value)

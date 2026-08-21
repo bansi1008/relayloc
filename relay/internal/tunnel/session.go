@@ -38,16 +38,6 @@ func (s *Session) Register(id string) chan []byte {
 	return ch
 }
 
-func (s *Session) Resolve(id string, msg []byte) {
-	s.respMu.Lock()
-	if ch, ok := s.responses[id]; ok {
-		ch <- msg
-		close(ch)
-		delete(s.responses, id)
-	}
-	s.respMu.Unlock()
-}
-
 func (s *Session) ReadLoop() error {
 	for {
 		//	fmt.Println("Waiting for next WebSocket message...")
@@ -144,6 +134,15 @@ func (s *Session) Request(ctx context.Context, id string, payload []byte) ([]byt
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+}
+func (s *Session) Resolve(id string, msg []byte) {
+	s.respMu.Lock()
+	if ch, ok := s.responses[id]; ok {
+		ch <- msg
+		close(ch)
+		delete(s.responses, id)
+	}
+	s.respMu.Unlock()
 }
 func (s *Session) Write(data []byte) error {
 	s.writeMu.Lock()
