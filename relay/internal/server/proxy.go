@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -8,6 +9,7 @@ import (
 	"relaygo/relay/internal/tunnel"
 	"relaygo/shared/protocol"
 	"strings"
+	"time"
 )
 
 func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +32,9 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
+	log.Printf("URL.Path: %q", r.URL.Path)
+	log.Printf("id: %q", r.PathValue("id"))
+	log.Printf("path: %q", r.PathValue("path"))
 
 	req := protocol.HTTPReq{
 		ID:     requestID,
@@ -60,8 +65,10 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	respPayload, err := session.Request(r.Context(), requestID, data)
+	//for now hardocded auto req cancellation for 30sec
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	respPayload, err := session.Request(ctx, requestID, data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -92,8 +99,17 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 
 		prefix := "/tunnel/" + id
 
-		html = strings.ReplaceAll(html, `href="/`, `href="`+prefix+`/`)
-		html = strings.ReplaceAll(html, `src="/`, `src="`+prefix+`/`)
+		html = strings.ReplaceAll(
+			html,
+			`href="/`,
+			`href="`+prefix+`/`,
+		)
+
+		html = strings.ReplaceAll(
+			html,
+			`src="/`,
+			`src="`+prefix+`/`,
+		)
 
 		res.Body = []byte(html)
 

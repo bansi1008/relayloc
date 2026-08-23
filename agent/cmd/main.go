@@ -1,11 +1,9 @@
 package main
 
 import (
-	"encoding/json"
 	"log"
 
 	"relaygo/agent/internal/client"
-	"relaygo/shared/protocol"
 )
 
 func main() {
@@ -16,17 +14,7 @@ func main() {
 	}
 	defer c.Close()
 
-	payload, err := json.Marshal("agent-1")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	frame := protocol.Frame{
-		Type:    protocol.RegisterAgent,
-		Payload: payload,
-	}
-
-	if err := c.Send(frame); err != nil {
+	if err := c.Register("agent-1"); err != nil {
 		log.Fatal(err)
 	}
 
