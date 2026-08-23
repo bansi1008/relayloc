@@ -10,9 +10,6 @@ func TestHTTPRequestFrame(t *testing.T) {
 		ID:     "req-123",
 		Method: "GET",
 		Path:   "/hello",
-		Header: map[string]string{
-			"Host": "example.com",
-		},
 	}
 
 	payload, err := json.Marshal(req)

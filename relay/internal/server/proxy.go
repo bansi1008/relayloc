@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"relaygo/relay/internal/tunnel"
@@ -23,13 +24,27 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
 
 	req := protocol.HTTPReq{
 		ID:     requestID,
 		Method: r.Method,
 		Path:   "/" + r.PathValue("path"),
-		Header: map[string]string{},
+		Query:  r.URL.RawQuery,
+		Header: r.Header,
+		Body:   body,
 	}
+
+	// for key, values := range r.Header {
+	// 	if len(values) > 0 {
+	// 		req.Header[key] = values[0]
+	// 	}
+	// }
 
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -62,10 +77,17 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 	//log.Printf("Response Content-Type: %q", res.Header["Content-Type"])
 	//log.Printf("Response headers: %+v", res.Header)
 
-	for key, value := range res.Header {
-		w.Header().Set(key, value)
+	for key, values := range res.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
 	}
-	if strings.Contains(res.Header["Content-Type"], "text/html") {
+	contentType := ""
+	if values, ok := res.Header["Content-Type"]; ok && len(values) > 0 {
+		contentType = values[0]
+	}
+
+	if strings.Contains(contentType, "text/html") {
 		html := string(res.Body)
 
 		prefix := "/tunnel/" + id
@@ -75,7 +97,6 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 
 		res.Body = []byte(html)
 
-		// Body length has changed, so don't forward an old Content-Length.
 		w.Header().Del("Content-Length")
 	}
 

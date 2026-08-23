@@ -1,12 +1,12 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io"
 	"log"
 	"net/http"
-
-	"github.com/gorilla/websocket"
 
 	"encoding/json"
 	"relaygo/shared/protocol"
@@ -90,15 +90,30 @@ func (c *Client) Read() error {
 				return err
 
 			}
-			log.Printf("HTTP request received: %s %s", req.Method, req.Path)
+			//log.Printf("HTTP request received: %s %s", req.Method, req.Path)
+			url := "http://localhost:3000" + req.Path
+			if req.Query != "" {
+				url += "?" + req.Query
+
+			}
+			log.Printf("urllllll %s", url)
 			httpReq, err := http.NewRequest(
 				req.Method,
-				"http://localhost:3000"+req.Path,
-				nil,
+				url,
+				bytes.NewReader(req.Body),
 			)
+
 			if err != nil {
 				return err
 			}
+			for key, values := range req.Header {
+				for _, value := range values {
+					httpReq.Header.Add(key, value)
+				}
+			}
+			// log.Println("Agent method:", httpReq.Method)
+			// log.Println("Agent headers:", httpReq.Header)
+			// log.Println("Agent body:", string(req.Body))
 			resp, err := http.DefaultClient.Do(httpReq)
 			if err != nil {
 				return err
@@ -109,12 +124,10 @@ func (c *Client) Read() error {
 				return err
 			}
 
-			headers := make(map[string]string)
+			headers := make(map[string][]string)
 
 			for key, values := range resp.Header {
-				if len(values) > 0 {
-					headers[key] = values[0]
-				}
+				headers[key] = values
 			}
 
 			res := protocol.HTTPRes{
