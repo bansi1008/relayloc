@@ -1,15 +1,16 @@
 package client
 
 import (
+	"bytes"
 	"fmt"
+	"github.com/gorilla/websocket"
 	"io"
 	"log"
 	"net/http"
 
-	"github.com/gorilla/websocket"
-
 	"encoding/json"
 	"relaygo/shared/protocol"
+	"strings"
 )
 
 type Client struct {
@@ -53,7 +54,7 @@ func (c *Client) Read() error {
 			return err
 		}
 
-		log.Printf("Received: %s", message)
+		//log.Printf("Received: %s", message)
 
 		frame, err := protocol.Decode(message)
 		if err != nil {
@@ -90,16 +91,50 @@ func (c *Client) Read() error {
 				return err
 
 			}
-			log.Printf("HTTP request received: %s %s", req.Method, req.Path)
+			//log.Printf("HTTP request received: %s %s", req.Method, req.Path)
+			path := req.Path
+
+			prefix := "/tunnel/" + req.ID // only if ID is the tunnel ID — otherwise don't use this
+
+			if strings.HasPrefix(path, prefix) {
+				path = strings.TrimPrefix(path, prefix)
+			}
+
+			url := "http://localhost:3000" + path
+
+			if req.Query != "" {
+				url += "?" + req.Query
+			}
+
+			log.Printf("urllllll %s", url)
 			httpReq, err := http.NewRequest(
 				req.Method,
-				"http://localhost:3000"+req.Path,
-				nil,
+				url,
+				bytes.NewReader(req.Body),
 			)
+
 			if err != nil {
 				return err
 			}
+			for key, values := range req.Header {
+				if strings.EqualFold(key, "Accept-Encoding") {
+					continue
+				}
+
+				for _, value := range values {
+					httpReq.Header.Add(key, value)
+				}
+			}
+
+			httpReq.Header.Set("Accept-Encoding", "identity")
+			// log.Println("Agent method:", httpReq.Method)
+			// log.Println("Agent headers:", httpReq.Header)
+			// log.Println("Agent body:", string(req.Body))
 			resp, err := http.DefaultClient.Do(httpReq)
+			log.Printf("Local response status: %d", resp.StatusCode)
+			log.Printf("Local response Content-Type: %q", resp.Header.Get("Content-Type"))
+			log.Printf("Local response Content-Encoding: %q", resp.Header.Get("Content-Encoding"))
+			log.Printf("Local response Content-Length: %q", resp.Header.Get("Content-Length"))
 			if err != nil {
 				return err
 			}
@@ -108,13 +143,13 @@ func (c *Client) Read() error {
 			if err != nil {
 				return err
 			}
+			log.Printf("Body first 20 bytes: %q", body[:min(20, len(body))])
+			log.Printf("Body size: %d", len(body))
 
-			headers := make(map[string]string)
+			headers := make(map[string][]string)
 
 			for key, values := range resp.Header {
-				if len(values) > 0 {
-					headers[key] = values[0]
-				}
+				headers[key] = values
 			}
 
 			res := protocol.HTTPRes{
@@ -152,4 +187,15 @@ func (c *Client) Close() error {
 		return c.conn.Close()
 	}
 	return nil
+}
+func (c *Client) Register(name string) error {
+	payload, err := json.Marshal(name)
+	if err != nil {
+		return err
+	}
+
+	return c.Send(protocol.Frame{
+		Type:    protocol.RegisterAgent,
+		Payload: payload,
+	})
 }

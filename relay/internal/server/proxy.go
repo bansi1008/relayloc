@@ -1,12 +1,15 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"relaygo/relay/internal/tunnel"
 	"relaygo/shared/protocol"
 	"strings"
+	"time"
 )
 
 func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
@@ -23,13 +26,30 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+	log.Printf("URL.Path: %q", r.URL.Path)
+	log.Printf("id: %q", r.PathValue("id"))
+	log.Printf("path: %q", r.PathValue("path"))
 
 	req := protocol.HTTPReq{
 		ID:     requestID,
 		Method: r.Method,
 		Path:   "/" + r.PathValue("path"),
-		Header: map[string]string{},
+		Query:  r.URL.RawQuery,
+		Header: r.Header,
+		Body:   body,
 	}
+
+	// for key, values := range r.Header {
+	// 	if len(values) > 0 {
+	// 		req.Header[key] = values[0]
+	// 	}
+	// }
 
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -45,8 +65,10 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	respPayload, err := session.Request(r.Context(), requestID, data)
+	//for now hardocded auto req cancellation for 30sec
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	respPayload, err := session.Request(ctx, requestID, data)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -62,20 +84,35 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 	//log.Printf("Response Content-Type: %q", res.Header["Content-Type"])
 	//log.Printf("Response headers: %+v", res.Header)
 
-	for key, value := range res.Header {
-		w.Header().Set(key, value)
+	for key, values := range res.Header {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
 	}
-	if strings.Contains(res.Header["Content-Type"], "text/html") {
+	contentType := ""
+	if values, ok := res.Header["Content-Type"]; ok && len(values) > 0 {
+		contentType = values[0]
+	}
+
+	if strings.Contains(contentType, "text/html") {
 		html := string(res.Body)
 
 		prefix := "/tunnel/" + id
 
-		html = strings.ReplaceAll(html, `href="/`, `href="`+prefix+`/`)
-		html = strings.ReplaceAll(html, `src="/`, `src="`+prefix+`/`)
+		html = strings.ReplaceAll(
+			html,
+			`href="/`,
+			`href="`+prefix+`/`,
+		)
+
+		html = strings.ReplaceAll(
+			html,
+			`src="/`,
+			`src="`+prefix+`/`,
+		)
 
 		res.Body = []byte(html)
 
-		// Body length has changed, so don't forward an old Content-Length.
 		w.Header().Del("Content-Length")
 	}
 

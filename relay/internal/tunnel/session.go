@@ -49,7 +49,7 @@ func (s *Session) ReadLoop() error {
 			}
 			return err
 		}
-		fmt.Printf("RAW MESSAGE: %s\n", msg)
+		//	fmt.Printf("RAW MESSAGE: %s\n", msg)
 		frame, err := protocol.Decode(msg)
 		if err != nil {
 			fmt.Printf("DECODE ERROR: %v\n", err)
@@ -114,7 +114,7 @@ func (s *Session) ReadLoop() error {
 			if err := json.Unmarshal(frame.Payload, &res); err != nil {
 				return err
 			}
-			log.Printf("HTTP res received: %d %s", res.Status, res.Body)
+			//	log.Printf("HTTP res received: %d %s", res.Status, res.Body)
 			s.Resolve(res.ID, frame.Payload)
 		}
 
@@ -132,9 +132,17 @@ func (s *Session) Request(ctx context.Context, id string, payload []byte) ([]byt
 	case resp := <-ch:
 		return resp, nil
 	case <-ctx.Done():
+		s.UnregisterReq(id)
 		return nil, ctx.Err()
 	}
 }
+func (s *Session) UnregisterReq(id string) {
+	//quite important if agent dose not give res then this func will remove the req and also goota put lock to prevent concurency
+	s.respMu.Lock()
+	defer s.respMu.Unlock()
+	delete(s.responses, id)
+}
+
 func (s *Session) Resolve(id string, msg []byte) {
 	s.respMu.Lock()
 	if ch, ok := s.responses[id]; ok {
