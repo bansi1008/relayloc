@@ -10,6 +10,7 @@ import (
 	"relaygo/relay/internal/db"
 	"relaygo/relay/internal/server"
 	"relaygo/relay/internal/user"
+
 	"syscall"
 )
 
@@ -29,9 +30,21 @@ func main() {
 
 	userRepo := user.NewRepository(database.Pool)
 
-	userService := user.NewService(userRepo)
+	if err := godotenv.Load(); err != nil {
+		log.Fatal("failed to load .env:", err)
+	}
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+
+	if jwtSecret == "" {
+		log.Fatal("JWT_SECRET is required")
+	}
+
+	tokenService := user.NewTokenService(jwtSecret)
+	userService := user.NewService(userRepo, tokenService)
 
 	authHandler := auth.NewHandler(userService)
+
 	srv := server.New(":8080", authHandler)
 
 	go func() {
