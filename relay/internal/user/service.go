@@ -11,12 +11,14 @@ import (
 )
 
 type Service struct {
-	repo Repository
+	repo         Repository
+	tokenService *TokenService
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, tokenService *TokenService) *Service {
 	return &Service{
-		repo: repo,
+		repo:         repo,
+		tokenService: tokenService,
 	}
 }
 
@@ -67,4 +69,52 @@ func (s *Service) Register(
 	}
 
 	return user, nil
+}
+
+func (s *Service) Loginserivce(
+	ctx context.Context,
+	Email string,
+	Password string,
+) (*loginResponse, error) {
+	Email = strings.ToLower(strings.TrimSpace(Email))
+	if Email == " " {
+		return nil, fmt.Errorf("email is require")
+	}
+	if Password == " " {
+		return nil, fmt.Errorf("passowrd is require")
+	}
+
+	ex, err := s.repo.GetByEmail(ctx, Email)
+
+	if err == nil && ex == nil {
+		return nil, fmt.Errorf("please create an account")
+	}
+
+	//
+	err = bcrypt.CompareHashAndPassword(
+		[]byte(ex.PasswordHash),
+		[]byte(Password),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("invalid email or password")
+	}
+	jwt, err := s.tokenService.Generate(ex.ID)
+	if err != nil {
+		return nil, fmt.Errorf("generate token: %w", err)
+	}
+
+	loginResponse := &loginResponse{
+		Token:     jwt,
+		CreatedAt: time.Now().Format(time.RFC3339),
+	}
+	return loginResponse, nil
+}
+
+type loginResponse struct {
+	Token     string `json:"token"`
+	CreatedAt string `json:"created_at"`
+}
+
+func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	return s.repo.GetByID(ctx, id)
 }

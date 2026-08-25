@@ -9,10 +9,11 @@ import (
 )
 
 type Server struct {
-	mux       *http.ServeMux
-	wsHandler *websocket.Handler
-	addr      string
-	registry  *tunnel.Registry
+	mux            *http.ServeMux
+	wsHandler      *websocket.Handler
+	addr           string
+	registry       *tunnel.Registry
+	authMiddleware *auth.Middleware
 }
 
 func New(addr string, authHandler *auth.Handler) *Server {
