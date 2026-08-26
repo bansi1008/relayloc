@@ -3,6 +3,7 @@ package server
 import (
 	"log"
 	"net/http"
+	"relaygo/relay/internal/agentHandle"
 	"relaygo/relay/internal/auth"
 	"relaygo/relay/internal/tunnel"
 	"relaygo/relay/internal/websocket"
@@ -16,7 +17,7 @@ type Server struct {
 	authMiddleware *auth.Middleware
 }
 
-func New(addr string, authHandler *auth.Handler) *Server {
+func New(addr string, authHandler *auth.Handler, agentHandler *agenthandle.Handler) *Server {
 	mux := http.NewServeMux()
 	registry := tunnel.NewRegistry()
 
@@ -28,7 +29,7 @@ func New(addr string, authHandler *auth.Handler) *Server {
 	}
 
 	//s.registerRoutes()
-	s.registerRoutes(authHandler)
+	s.registerRoutes(authHandler, agentHandler)
 
 	return s
 }

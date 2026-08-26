@@ -1,0 +1,13 @@
+package agent
+
+import (
+	"context"
+	"github.com/google/uuid"
+)
+
+type Repository interface {
+	Create(ctx context.Context, agent *Agent) error
+	GetByID(ctx context.Context, id uuid.UUID) (*Agent, error)
+	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Agent, error)
+	Delete(ctx context.Context, id uuid.UUID) error
+}
