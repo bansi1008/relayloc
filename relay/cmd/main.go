@@ -6,11 +6,12 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"relaygo/relay/internal/agent"
+	"relaygo/relay/internal/agentHandle"
 	"relaygo/relay/internal/auth"
 	"relaygo/relay/internal/db"
 	"relaygo/relay/internal/server"
 	"relaygo/relay/internal/user"
-
 	"syscall"
 )
 
@@ -29,6 +30,7 @@ func main() {
 	defer database.Close()
 
 	userRepo := user.NewRepository(database.Pool)
+	agentRepo := agent.NewRepository(database.Pool)
 
 	if err := godotenv.Load(); err != nil {
 		log.Fatal("failed to load .env:", err)
@@ -44,8 +46,10 @@ func main() {
 	userService := user.NewService(userRepo, tokenService)
 
 	authHandler := auth.NewHandler(userService)
+	agentservice := agent.NewService(agentRepo)
+	agentHandler := agenthandle.NewHandler(agentservice)
 
-	srv := server.New(":8080", authHandler)
+	srv := server.New(":8080", authHandler, agentHandler)
 
 	go func() {
 		if err := srv.Start(); err != nil {
