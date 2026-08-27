@@ -14,4 +14,5 @@ type Agent struct {
 	UpdatedAt       time.Time  `json:"updated_at"`
 	LastConnectedAt *time.Time `json:"last_connected_at,omitempty"`
 	Connected       bool       `json:"connected"`
+	Token           string     `json:Token`
 }

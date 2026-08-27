@@ -10,4 +10,5 @@ type Repository interface {
 	GetByID(ctx context.Context, id uuid.UUID) (*Agent, error)
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Agent, error)
 	Delete(ctx context.Context, id uuid.UUID) error
+	GetByName(ctx context.Context, name string, userID uuid.UUID) (*Agent, error)
 }

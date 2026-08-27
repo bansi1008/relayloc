@@ -31,7 +31,7 @@ func (r *PostgresRepository) Create(ctx context.Context, agent *Agent) error {
 			created_at,
 			updated_at,
 			last_connected_at,
-			connected
+			credential_hash
 		)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		`,
@@ -41,7 +41,7 @@ func (r *PostgresRepository) Create(ctx context.Context, agent *Agent) error {
 		agent.CreatedAt,
 		agent.UpdatedAt,
 		agent.LastConnectedAt,
-		agent.Connected,
+		agent.Token,
 	)
 
 	if err != nil {
@@ -65,8 +65,7 @@ func (r *PostgresRepository) GetByUserID(
             name,
             created_at,
             updated_at,
-            last_connected_at,
-            connected
+            last_connected_at
         FROM agents
         WHERE user_id = $1
         `,
@@ -88,7 +87,6 @@ func (r *PostgresRepository) GetByUserID(
 			&a.CreatedAt,
 			&a.UpdatedAt,
 			&a.LastConnectedAt,
-			&a.Connected,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan agent: %w", err)
@@ -118,8 +116,7 @@ func (r *PostgresRepository) GetByID(
 			name,
 			created_at,
 			updated_at,
-			last_connected_at,
-			connected
+			last_connected_at
 		FROM agents
 		WHERE id = $1
 		`,
@@ -131,7 +128,6 @@ func (r *PostgresRepository) GetByID(
 		&a.CreatedAt,
 		&a.UpdatedAt,
 		&a.LastConnectedAt,
-		&a.Connected,
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -162,3 +158,42 @@ func (r *PostgresRepository) Delete(
 	return nil
 }
 
+func (r *PostgresRepository) GetByName(
+	ctx context.Context,
+	name string,
+	userID uuid.UUID,
+) (*Agent, error) {
+	a := &Agent{}
+	err := r.db.QueryRow(
+		ctx,
+		`
+		SELECT
+			id,
+			user_id,
+			name,
+			created_at,
+			updated_at,
+			last_connected_at
+		FROM agents
+		WHERE name = $1 AND user_id=$2
+		
+		`,
+		name,
+		userID,
+	).Scan(
+		&a.ID,
+		&a.UserID,
+		&a.Name,
+		&a.CreatedAt,
+		&a.UpdatedAt,
+		&a.LastConnectedAt,
+	)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("agent not found")
+		}
+		return nil, fmt.Errorf("get agent by id: %w", err)
+	}
+
+	return a, nil
+}

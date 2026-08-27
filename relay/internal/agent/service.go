@@ -22,6 +22,7 @@ func (s *Service) NewAgent(
 	ctx context.Context,
 	Name string,
 	id uuid.UUID,
+	Token string,
 ) (*Agent, error) {
 
 	if Name == "" {
@@ -40,6 +41,7 @@ func (s *Service) NewAgent(
 		UpdatedAt:       time.Now().UTC(),
 		LastConnectedAt: nil,
 		Connected:       false,
+		Token:           Token,
 	}
 
 	if err := s.repo.Create(ctx, agent); err != nil {
@@ -78,3 +80,13 @@ func (s *Service) DeleteAgent(
 	return s.repo.Delete(ctx, id)
 }
 
+func (s *Service) GetAgentByName(
+	ctx context.Context,
+	name string,
+	userID uuid.UUID,
+) (*Agent, error) {
+	if userID == uuid.Nil {
+		return nil, fmt.Errorf("user id is required")
+	}
+	return s.repo.GetByName(ctx, name, userID)
+}

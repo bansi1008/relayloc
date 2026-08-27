@@ -1,11 +1,14 @@
 package agenthandle
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"log"
 	"net/http"
-
-	"github.com/google/uuid"
 	"relaygo/relay/internal/agent"
 	"relaygo/relay/internal/auth"
 )
@@ -26,6 +29,7 @@ type registeragent struct {
 type registerresagent struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Token     string `json:"token"`
 	Email     string `json:"email"`
 	CreatedAt string `json:"created_at"`
 }
@@ -44,7 +48,24 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("name %s", req.Name)
-	u, err := h.agentservice.NewAgent(r.Context(), req.Name, id)
+
+	_, err := h.agentservice.GetAgentByName(r.Context(), req.Name, id)
+	if err != nil {
+		http.Error(w, "agent name alredy exist please use diffrent name", http.StatusBadRequest)
+		return
+
+	}
+	tok, err := Generate()
+	if err != nil {
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword(
+		[]byte(tok),
+		bcrypt.DefaultCost,
+	)
+
+	u, err := h.agentservice.NewAgent(r.Context(), req.Name, id, string(hash))
 
 	if err != nil {
 		log.Printf("err: %v", err)
@@ -53,8 +74,9 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	json.NewEncoder(w).Encode(registerresagent{
-		ID:   u.ID.String(),
-		Name: u.Name,
+		ID:    u.ID.String(),
+		Name:  u.Name,
+		Token: tok,
 		//CreatedAt: u.CreatedAt.Format(time.RFC3339),
 	})
 
@@ -119,3 +141,12 @@ func (h *Handler) DeleteAgent(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func Generate() (string, error) {
+	b := make([]byte, 32)
+
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate token: %w", err)
+	}
+
+	return base64.RawURLEncoding.EncodeToString(b), nil
+}
