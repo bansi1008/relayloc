@@ -197,3 +197,69 @@ func (r *PostgresRepository) GetByName(
 
 	return a, nil
 }
+
+func (r *PostgresRepository) GetByNameOnly(
+	ctx context.Context,
+	name string,
+) ([]*Agent, error) {
+	rows, err := r.db.Query(
+		ctx,
+		`
+		SELECT
+			id,
+			user_id,
+			name,
+			credential_hash,
+			created_at,
+			updated_at,
+			last_connected_at
+		FROM agents
+		WHERE name = $1
+		`,
+		name,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query agents by name: %w", err)
+	}
+	defer rows.Close()
+
+	agents := []*Agent{}
+	for rows.Next() {
+		a := &Agent{}
+		err := rows.Scan(
+			&a.ID,
+			&a.UserID,
+			&a.Name,
+			&a.Token,
+			&a.CreatedAt,
+			&a.UpdatedAt,
+			&a.LastConnectedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("scan agent: %w", err)
+		}
+		agents = append(agents, a)
+	}
+
+	if rows.Err() != nil {
+		return nil, fmt.Errorf("rows error: %w", rows.Err())
+	}
+
+	return agents, nil
+}
+
+func (r *PostgresRepository) UpdateLastConnected(
+	ctx context.Context,
+	id uuid.UUID,
+) error {
+	_, err := r.db.Exec(
+		ctx,
+		`UPDATE agents SET last_connected_at = NOW(), updated_at = NOW() WHERE id = $1`,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update last connected: %w", err)
+	}
+	return nil
+}
+

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+
 	"github.com/google/uuid"
 )
 
@@ -11,4 +12,7 @@ type Repository interface {
 	GetByUserID(ctx context.Context, userID uuid.UUID) ([]*Agent, error)
 	Delete(ctx context.Context, id uuid.UUID) error
 	GetByName(ctx context.Context, name string, userID uuid.UUID) (*Agent, error)
+	GetByNameOnly(ctx context.Context, name string) ([]*Agent, error)
+	UpdateLastConnected(ctx context.Context, id uuid.UUID) error
 }
+
