@@ -50,10 +50,9 @@ func (h *Handler) CreateAgent(w http.ResponseWriter, r *http.Request) {
 	log.Printf("name %s", req.Name)
 
 	_, err := h.agentservice.GetAgentByName(r.Context(), req.Name, id)
-	if err != nil {
-		http.Error(w, "agent name alredy exist please use diffrent name", http.StatusBadRequest)
+	if err == nil {
+		http.Error(w, "agent name already exists, please use a different name", http.StatusBadRequest)
 		return
-
 	}
 	tok, err := Generate()
 	if err != nil {

@@ -2,17 +2,18 @@ package main
 
 import (
 	"context"
-	"github.com/joho/godotenv"
 	"log"
 	"os"
 	"os/signal"
 	"relaygo/relay/internal/agent"
-	"relaygo/relay/internal/agentHandle"
+	agenthandle "relaygo/relay/internal/agentHandle"
 	"relaygo/relay/internal/auth"
 	"relaygo/relay/internal/db"
 	"relaygo/relay/internal/server"
 	"relaygo/relay/internal/user"
 	"syscall"
+
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -49,7 +50,7 @@ func main() {
 	agentservice := agent.NewService(agentRepo)
 	agentHandler := agenthandle.NewHandler(agentservice)
 
-	srv := server.New(":8080", authHandler, agentHandler)
+	srv := server.New(":8080", authHandler, agentHandler, agentservice)
 
 	go func() {
 		if err := srv.Start(); err != nil {

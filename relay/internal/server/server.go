@@ -3,7 +3,8 @@ package server
 import (
 	"log"
 	"net/http"
-	"relaygo/relay/internal/agentHandle"
+	"relaygo/relay/internal/agent"
+	agenthandle "relaygo/relay/internal/agentHandle"
 	"relaygo/relay/internal/auth"
 	"relaygo/relay/internal/tunnel"
 	"relaygo/relay/internal/websocket"
@@ -17,7 +18,7 @@ type Server struct {
 	authMiddleware *auth.Middleware
 }
 
-func New(addr string, authHandler *auth.Handler, agentHandler *agenthandle.Handler) *Server {
+func New(addr string, authHandler *auth.Handler, agentHandler *agenthandle.Handler, agentService *agent.Service) *Server {
 	mux := http.NewServeMux()
 	registry := tunnel.NewRegistry()
 
@@ -25,7 +26,7 @@ func New(addr string, authHandler *auth.Handler, agentHandler *agenthandle.Handl
 		addr:      addr,
 		mux:       mux,
 		registry:  registry,
-		wsHandler: websocket.NewHandler(registry),
+		wsHandler: websocket.NewHandler(registry, agentService),
 	}
 
 	//s.registerRoutes()
@@ -38,3 +39,4 @@ func (s *Server) Start() error {
 	log.Printf("Starting server on %s", s.addr)
 	return http.ListenAndServe(s.addr, s.mux)
 }
+

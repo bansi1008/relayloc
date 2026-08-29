@@ -3,9 +3,10 @@ package agent
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
-	//	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type Service struct {
@@ -89,4 +90,34 @@ func (s *Service) GetAgentByName(
 		return nil, fmt.Errorf("user id is required")
 	}
 	return s.repo.GetByName(ctx, name, userID)
+}
+
+func (s *Service) AuthenticateAgent(
+	ctx context.Context,
+	name string,
+	rawToken string,
+) (*Agent, error) {
+	if name == "" {
+		return nil, fmt.Errorf("agent name is required")
+	}
+	if rawToken == "" {
+		return nil, fmt.Errorf("token is required")
+	}
+
+	agents, err := s.repo.GetByNameOnly(ctx, name)
+	if err != nil {
+		return nil, fmt.Errorf("query agents: %w", err)
+	}
+	if len(agents) == 0 {
+		return nil, fmt.Errorf("agent not found")
+	}
+
+	for _, a := range agents {
+		if err := bcrypt.CompareHashAndPassword([]byte(a.Token), []byte(rawToken)); err == nil {
+			_ = s.repo.UpdateLastConnected(ctx, a.ID)
+			return a, nil
+		}
+	}
+
+	return nil, fmt.Errorf("invalid token")
 }

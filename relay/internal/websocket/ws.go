@@ -2,19 +2,23 @@ package websocket
 
 import (
 	"fmt"
-	"github.com/gorilla/websocket"
 	"log"
 	"net/http"
+	"relaygo/relay/internal/agent"
 	"relaygo/relay/internal/tunnel"
+
+	"github.com/gorilla/websocket"
 )
 
 type Handler struct {
-	registry *tunnel.Registry
+	registry     *tunnel.Registry
+	agentService *agent.Service
 }
 
-func NewHandler(registry *tunnel.Registry) *Handler {
+func NewHandler(registry *tunnel.Registry, agentService *agent.Service) *Handler {
 	return &Handler{
-		registry: registry,
+		registry:     registry,
+		agentService: agentService,
 	}
 }
 
@@ -34,7 +38,7 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 	log.Printf("Agent connected from %s", r.RemoteAddr)
-	session := tunnel.NewSession(conn, h.registry)
+	session := tunnel.NewSession(conn, h.registry, h.agentService)
 
 	go func() {
 		if err := session.InitPing(); err != nil {
@@ -46,3 +50,4 @@ func (h *Handler) Handle(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
+

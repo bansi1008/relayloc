@@ -6,27 +6,31 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"log"
+	"relaygo/relay/internal/agent"
 	"relaygo/shared/protocol"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type Session struct {
-	conn      *websocket.Conn
-	writeMu   sync.Mutex
-	respMu    sync.Mutex
-	registry  *Registry
-	responses map[string]chan []byte
-	id        string
+	conn         *websocket.Conn
+	writeMu      sync.Mutex
+	respMu       sync.Mutex
+	registry     *Registry
+	agentService *agent.Service
+	responses    map[string]chan []byte
+	id           string
 }
 
-func NewSession(conn *websocket.Conn, registry *Registry) *Session {
+func NewSession(conn *websocket.Conn, registry *Registry, agentService *agent.Service) *Session {
 	return &Session{
-		conn:      conn,
-		registry:  registry,
-		responses: make(map[string]chan []byte),
+		conn:         conn,
+		registry:     registry,
+		agentService: agentService,
+		responses:    make(map[string]chan []byte),
 	}
 }
 
@@ -59,6 +63,44 @@ func (s *Session) ReadLoop() error {
 		fmt.Printf("FRAME TYPE: %s\n", frame.Type)
 
 		switch frame.Type {
+		case protocol.AuthenticateAgent:
+			var req protocol.AuthReq
+			if err := json.Unmarshal(frame.Payload, &req); err != nil {
+				log.Printf("Failed to unmarshal AuthReq: %v", err)
+				_ = s.sendAuthFailed("invalid auth request payload")
+				continue
+			}
+
+			log.Printf("Authenticating agent: name=%s", req.Name)
+
+			a, err := s.agentService.AuthenticateAgent(context.Background(), req.Name, req.Token)
+			if err != nil {
+				log.Printf("Authentication failed for agent %s: %v", req.Name, err)
+				_ = s.sendAuthFailed(err.Error())
+				return fmt.Errorf("authentication failed: %w", err)
+			}
+
+			tunnelID := a.ID.String()
+			s.registry.Register(tunnelID, s)
+			s.id = tunnelID
+
+			tunnelURL := fmt.Sprintf("http://localhost:8080/tunnel/%s/", tunnelID)
+			successPayload, _ := json.Marshal(protocol.AuthSuccessRes{
+				AgentID:   tunnelID,
+				Name:      a.Name,
+				TunnelURL: tunnelURL,
+			})
+
+			if err := s.WriteFrame(protocol.Frame{
+				Type:    protocol.AuthSuccess,
+				Payload: successPayload,
+			}); err != nil {
+				log.Printf("Error sending auth success: %v", err)
+				return err
+			}
+
+			log.Printf("Agent authenticated successfully: %s (id: %s)", a.Name, tunnelID)
+
 		case protocol.RegisterAgent:
 			var name string
 
@@ -84,6 +126,7 @@ func (s *Session) ReadLoop() error {
 				log.Printf("Error writing ping: %v", err)
 				return err
 			}
+
 		case protocol.Pong:
 			fmt.Println("got pong send test")
 			session, ok := s.registry.Get(s.id)
@@ -120,6 +163,15 @@ func (s *Session) ReadLoop() error {
 
 	}
 }
+
+func (s *Session) sendAuthFailed(reason string) error {
+	failPayload, _ := json.Marshal(protocol.AuthFailedRes{Reason: reason})
+	return s.WriteFrame(protocol.Frame{
+		Type:    protocol.AuthFailed,
+		Payload: failPayload,
+	})
+}
+
 
 func (s *Session) Request(ctx context.Context, id string, payload []byte) ([]byte, error) {
 	ch := s.Register(id)

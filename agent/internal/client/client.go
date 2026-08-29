@@ -3,10 +3,11 @@ package client
 import (
 	"bytes"
 	"fmt"
-	"github.com/gorilla/websocket"
 	"io"
 	"log"
 	"net/http"
+
+	"github.com/gorilla/websocket"
 
 	"encoding/json"
 	"relaygo/shared/protocol"
@@ -63,6 +64,25 @@ func (c *Client) Read() error {
 		}
 
 		switch frame.Type {
+		case protocol.AuthSuccess:
+			var res protocol.AuthSuccessRes
+			if err := json.Unmarshal(frame.Payload, &res); err != nil {
+				return err
+			}
+			c.tID = res.AgentID
+			log.Println(" Agent authenticated successfully!")
+			log.Printf("  Agent Name: %s", res.Name)
+			log.Printf("  Agent ID:   %s", res.AgentID)
+			log.Printf("  Tunnel URL: %s", res.TunnelURL)
+
+		case protocol.AuthFailed:
+			var res protocol.AuthFailedRes
+			if err := json.Unmarshal(frame.Payload, &res); err != nil {
+				return err
+			}
+			log.Printf("✗ Authentication failed: %s", res.Reason)
+			return fmt.Errorf("auth failed: %s", res.Reason)
+
 		case protocol.Registered:
 			log.Println("Agent registered successfully")
 			var id string
@@ -83,6 +103,7 @@ func (c *Client) Read() error {
 				return err
 			}
 			log.Println("PONG sent")
+
 		case protocol.HTTPReqFrame:
 			fmt.Println("got req fram")
 			var req protocol.HTTPReq
@@ -196,6 +217,22 @@ func (c *Client) Register(name string) error {
 
 	return c.Send(protocol.Frame{
 		Type:    protocol.RegisterAgent,
+		Payload: payload,
+	})
+}
+
+func (c *Client) Authenticate(name, token string) error {
+	req := protocol.AuthReq{
+		Name:  name,
+		Token: token,
+	}
+	payload, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+
+	return c.Send(protocol.Frame{
+		Type:    protocol.AuthenticateAgent,
 		Payload: payload,
 	})
 }
