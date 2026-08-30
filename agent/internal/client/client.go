@@ -2,22 +2,28 @@ package client
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 
-	"encoding/json"
+	"relaygo/agent/internal/store"
 	"relaygo/shared/protocol"
-	"strings"
 )
 
 type Client struct {
-	relayURL string
-	conn     *websocket.Conn
-	tID      string
+	relayURL  string
+	conn      *websocket.Conn
+	tID       string
+	pubKey    string
+	privKey   string
+	storePath string
 }
 
 func NewClient(relayURL string) *Client {
@@ -26,9 +32,18 @@ func NewClient(relayURL string) *Client {
 	}
 }
 
-func (c *Client) Connect() error {
-	//	log.Printf("Connecting to %s...", c.relayURL)
+func (c *Client) SetKeys(pubKey, privKey, storePath string) {
+	c.pubKey = pubKey
+	c.privKey = privKey
+	c.storePath = storePath
+}
 
+func (c *Client) SetChallengeCredentials(agentID, privKey string) {
+	c.tID = agentID
+	c.privKey = privKey
+}
+
+func (c *Client) Connect() error {
 	conn, _, err := websocket.DefaultDialer.Dial(c.relayURL, nil)
 	if err != nil {
 		return err
@@ -55,8 +70,6 @@ func (c *Client) Read() error {
 			return err
 		}
 
-		//log.Printf("Received: %s", message)
-
 		frame, err := protocol.Decode(message)
 		if err != nil {
 			log.Printf("Failed to decode frame: %v", err)
@@ -64,6 +77,35 @@ func (c *Client) Read() error {
 		}
 
 		switch frame.Type {
+		case protocol.ChallengeResFrame:
+			var res protocol.ChallengeRes
+			if err := json.Unmarshal(frame.Payload, &res); err != nil {
+				return err
+			}
+
+			privKeyBytes, err := base64.StdEncoding.DecodeString(c.privKey)
+			if err != nil || len(privKeyBytes) != ed25519.PrivateKeySize {
+				return fmt.Errorf("invalid private key in client")
+			}
+
+			sig := ed25519.Sign(privKeyBytes, []byte(res.Nonce))
+			sigStr := base64.StdEncoding.EncodeToString(sig)
+
+			verifyPayload, err := json.Marshal(protocol.ChallengeVerify{
+				AgentID:   c.tID,
+				Signature: sigStr,
+			})
+			if err != nil {
+				return err
+			}
+
+			if err := c.Send(protocol.Frame{
+				Type:    protocol.ChallengeVerifyFrame,
+				Payload: verifyPayload,
+			}); err != nil {
+				return err
+			}
+
 		case protocol.AuthSuccess:
 			var res protocol.AuthSuccessRes
 			if err := json.Unmarshal(frame.Payload, &res); err != nil {
@@ -74,6 +116,24 @@ func (c *Client) Read() error {
 			log.Printf("  Agent Name: %s", res.Name)
 			log.Printf("  Agent ID:   %s", res.AgentID)
 			log.Printf("  Tunnel URL: %s", res.TunnelURL)
+
+			if c.pubKey != "" && c.privKey != "" {
+				targetPath := c.storePath
+				if targetPath == "" {
+					targetPath = "credentials.json"
+				}
+				creds := store.Credentials{
+					AgentID:    res.AgentID,
+					AgentName:  res.Name,
+					PublicKey:  c.pubKey,
+					PrivateKey: c.privKey,
+				}
+				if err := store.SaveCredentials(targetPath, creds); err != nil {
+					log.Printf("Failed to save credentials: %v", err)
+				} else {
+					log.Printf("Saved credentials to %s", targetPath)
+				}
+			}
 
 		case protocol.AuthFailed:
 			var res protocol.AuthFailedRes
@@ -91,7 +151,7 @@ func (c *Client) Read() error {
 				return err
 			}
 			c.tID = id
-			log.Printf(id)
+			log.Println(id)
 
 		case protocol.Ping:
 			log.Println("Got PING, sending PONG")
@@ -114,11 +174,8 @@ func (c *Client) Read() error {
 			}
 			//log.Printf("HTTP request received: %s %s", req.Method, req.Path)
 			path := req.Path
-
-			prefix := "/tunnel/" + req.ID // only if ID is the tunnel ID — otherwise don't use this
-
-			if strings.HasPrefix(path, prefix) {
-				path = strings.TrimPrefix(path, prefix)
+			if !strings.HasPrefix(path, "/") {
+				path = "/" + path
 			}
 
 			url := "http://localhost:3000" + path
@@ -221,11 +278,15 @@ func (c *Client) Register(name string) error {
 	})
 }
 
-func (c *Client) Authenticate(name, token string) error {
+func (c *Client) Authenticate(email, agentName, accessID, publicKey string) error {
 	req := protocol.AuthReq{
-		Name:  name,
-		Token: token,
+		Email:     email,
+		AgentName: agentName,
+		AccessID:  accessID,
+		PublicKey: publicKey,
 	}
+
+	log.Printf("agentttttt from case %s", req.AgentName)
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return err
@@ -236,3 +297,19 @@ func (c *Client) Authenticate(name, token string) error {
 		Payload: payload,
 	})
 }
+
+func (c *Client) RequestChallenge(agentID string) error {
+	c.tID = agentID
+	payload, err := json.Marshal(protocol.ChallengeReq{
+		AgentID: agentID,
+	})
+	if err != nil {
+		return err
+	}
+
+	return c.Send(protocol.Frame{
+		Type:    protocol.ChallengeReqFrame,
+		Payload: payload,
+	})
+}
+
