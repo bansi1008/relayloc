@@ -14,5 +14,6 @@ type Repository interface {
 	GetByName(ctx context.Context, name string, userID uuid.UUID) (*Agent, error)
 	GetByNameOnly(ctx context.Context, name string) ([]*Agent, error)
 	UpdateLastConnected(ctx context.Context, id uuid.UUID) error
+	UpdatePublicKey(ctx context.Context, id uuid.UUID, publicKey string) error
 }
 

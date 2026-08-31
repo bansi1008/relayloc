@@ -22,6 +22,8 @@ func New(ctx context.Context, databaseURL string) (*DB, error) {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 
+	_, _ = pool.Exec(ctx, `ALTER TABLE agents ADD COLUMN IF NOT EXISTS public_key TEXT`)
+
 	return &DB{
 		Pool: pool,
 	}, nil
