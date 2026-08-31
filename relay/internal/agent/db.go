@@ -114,6 +114,7 @@ func (r *PostgresRepository) GetByID(
 			id,
 			user_id,
 			name,
+			COALESCE(public_key, ''),
 			created_at,
 			updated_at,
 			last_connected_at
@@ -125,6 +126,7 @@ func (r *PostgresRepository) GetByID(
 		&a.ID,
 		&a.UserID,
 		&a.Name,
+		&a.PublicKey,
 		&a.CreatedAt,
 		&a.UpdatedAt,
 		&a.LastConnectedAt,
@@ -171,12 +173,13 @@ func (r *PostgresRepository) GetByName(
 			id,
 			user_id,
 			name,
+			credential_hash,
+			COALESCE(public_key, ''),
 			created_at,
 			updated_at,
 			last_connected_at
 		FROM agents
 		WHERE name = $1 AND user_id=$2
-		
 		`,
 		name,
 		userID,
@@ -184,6 +187,8 @@ func (r *PostgresRepository) GetByName(
 		&a.ID,
 		&a.UserID,
 		&a.Name,
+		&a.Token,
+		&a.PublicKey,
 		&a.CreatedAt,
 		&a.UpdatedAt,
 		&a.LastConnectedAt,
@@ -262,4 +267,22 @@ func (r *PostgresRepository) UpdateLastConnected(
 	}
 	return nil
 }
+
+func (r *PostgresRepository) UpdatePublicKey(
+	ctx context.Context,
+	id uuid.UUID,
+	publicKey string,
+) error {
+	_, err := r.db.Exec(
+		ctx,
+		`UPDATE agents SET public_key = $1, updated_at = NOW() WHERE id = $2`,
+		publicKey,
+		id,
+	)
+	if err != nil {
+		return fmt.Errorf("update public key: %w", err)
+	}
+	return nil
+}
+
 

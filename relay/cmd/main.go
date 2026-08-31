@@ -47,7 +47,7 @@ func main() {
 	userService := user.NewService(userRepo, tokenService)
 
 	authHandler := auth.NewHandler(userService)
-	agentservice := agent.NewService(agentRepo)
+	agentservice := agent.NewService(agentRepo, userRepo)
 	agentHandler := agenthandle.NewHandler(agentservice)
 
 	srv := server.New(":8080", authHandler, agentHandler, agentservice)

@@ -6,15 +6,19 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"relaygo/relay/internal/tunnel"
-	"relaygo/shared/protocol"
 	"strings"
 	"time"
+
+	"relaygo/relay/internal/tunnel"
+	"relaygo/shared/protocol"
 )
 
 func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	s.handleProxy(id, w, r)
+}
 
+func (s *Server) handleProxy(id string, w http.ResponseWriter, r *http.Request) {
 	session, ok := s.registry.Get(id)
 	if !ok {
 		http.Error(w, "agent not connected", http.StatusBadGateway)
@@ -32,24 +36,29 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-	log.Printf("URL.Path: %q", r.URL.Path)
-	log.Printf("id: %q", r.PathValue("id"))
-	log.Printf("path: %q", r.PathValue("path"))
+
+	path := r.URL.Path
+	if path == "" {
+		path = "/"
+	}
+
+	headers := make(map[string][]string)
+	for k, v := range r.Header {
+		lowerK := strings.ToLower(k)
+		if lowerK == "connection" || lowerK == "keep-alive" || lowerK == "transfer-encoding" || lowerK == "upgrade" {
+			continue
+		}
+		headers[k] = v
+	}
 
 	req := protocol.HTTPReq{
 		ID:     requestID,
 		Method: r.Method,
-		Path:   "/" + r.PathValue("path"),
+		Path:   path,
 		Query:  r.URL.RawQuery,
-		Header: r.Header,
+		Header: headers,
 		Body:   body,
 	}
-
-	// for key, values := range r.Header {
-	// 	if len(values) > 0 {
-	// 		req.Header[key] = values[0]
-	// 	}
-	// }
 
 	payload, err := json.Marshal(req)
 	if err != nil {
@@ -65,8 +74,8 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	//for now hardocded auto req cancellation for 30sec
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 	respPayload, err := session.Request(ctx, requestID, data)
 	if err != nil {
@@ -75,45 +84,19 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var res protocol.HTTPRes
-
 	if err := json.Unmarshal(respPayload, &res); err != nil {
 		http.Error(w, "invalid response", http.StatusBadGateway)
 		return
 	}
 
-	//log.Printf("Response Content-Type: %q", res.Header["Content-Type"])
-	//log.Printf("Response headers: %+v", res.Header)
-
 	for key, values := range res.Header {
+		lowerKey := strings.ToLower(key)
+		if lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "transfer-encoding" {
+			continue
+		}
 		for _, value := range values {
 			w.Header().Add(key, value)
 		}
-	}
-	contentType := ""
-	if values, ok := res.Header["Content-Type"]; ok && len(values) > 0 {
-		contentType = values[0]
-	}
-
-	if strings.Contains(contentType, "text/html") {
-		html := string(res.Body)
-
-		prefix := "/tunnel/" + id
-
-		html = strings.ReplaceAll(
-			html,
-			`href="/`,
-			`href="`+prefix+`/`,
-		)
-
-		html = strings.ReplaceAll(
-			html,
-			`src="/`,
-			`src="`+prefix+`/`,
-		)
-
-		res.Body = []byte(html)
-
-		w.Header().Del("Content-Length")
 	}
 
 	w.WriteHeader(res.Status)
@@ -123,3 +106,4 @@ func (s *Server) Proxy(w http.ResponseWriter, r *http.Request) {
 		log.Println("failed to write response:", err)
 	}
 }
+

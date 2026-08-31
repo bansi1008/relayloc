@@ -118,3 +118,11 @@ type loginResponse struct {
 func (s *Service) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	return s.repo.GetByID(ctx, id)
 }
+
+func (s *Service) GetByEmail(ctx context.Context, email string) (*User, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
+	return s.repo.GetByEmail(ctx, email)
+}

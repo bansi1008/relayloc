@@ -2,20 +2,28 @@ package agent
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
+	"relaygo/relay/internal/user"
 )
 
 type Service struct {
-	repo Repository
+	repo     Repository
+	userRepo user.Repository
 }
 
-func NewService(repo Repository) *Service {
+func NewService(repo Repository, userRepo user.Repository) *Service {
 	return &Service{
-		repo: repo,
+		repo:     repo,
+		userRepo: userRepo,
 	}
 }
 
@@ -92,32 +100,114 @@ func (s *Service) GetAgentByName(
 	return s.repo.GetByName(ctx, name, userID)
 }
 
-func (s *Service) AuthenticateAgent(
+func (s *Service) AuthenticateWithKey(
 	ctx context.Context,
+	email string,
 	name string,
 	rawToken string,
+	publicKey string,
 ) (*Agent, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	name = strings.TrimSpace(name)
+	rawToken = strings.TrimSpace(rawToken)
+
+	if email == "" {
+		return nil, fmt.Errorf("email is required")
+	}
 	if name == "" {
 		return nil, fmt.Errorf("agent name is required")
 	}
 	if rawToken == "" {
-		return nil, fmt.Errorf("token is required")
+		return nil, fmt.Errorf("access token is required")
 	}
 
-	agents, err := s.repo.GetByNameOnly(ctx, name)
+	u, err := s.userRepo.GetByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("query agents: %w", err)
+		return nil, fmt.Errorf("user not found")
 	}
-	if len(agents) == 0 {
+
+	a, err := s.repo.GetByName(ctx, name, u.ID)
+	if err != nil {
 		return nil, fmt.Errorf("agent not found")
 	}
 
-	for _, a := range agents {
-		if err := bcrypt.CompareHashAndPassword([]byte(a.Token), []byte(rawToken)); err == nil {
-			_ = s.repo.UpdateLastConnected(ctx, a.ID)
-			return a, nil
+	if a.PublicKey != "" {
+		return nil, fmt.Errorf("agent is already activated")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(a.Token), []byte(rawToken)); err != nil {
+		return nil, fmt.Errorf("invalid access token")
+	}
+
+	if publicKey != "" {
+		if err := s.repo.UpdatePublicKey(ctx, a.ID, publicKey); err != nil {
+			return nil, fmt.Errorf("update public key: %w", err)
 		}
 	}
 
-	return nil, fmt.Errorf("invalid token")
+	_ = s.repo.UpdateLastConnected(ctx, a.ID)
+	return a, nil
 }
+
+func (s *Service) CreateChallenge(ctx context.Context, agentIDStr string) (*Agent, string, error) {
+	agentID, err := uuid.Parse(strings.TrimSpace(agentIDStr))
+	if err != nil {
+		return nil, "", fmt.Errorf("invalid agent id")
+	}
+
+	a, err := s.repo.GetByID(ctx, agentID)
+	if err != nil {
+		return nil, "", fmt.Errorf("agent not found")
+	}
+
+	if a.PublicKey == "" {
+		return nil, "", fmt.Errorf("please activate the agent first")
+	}
+
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return nil, "", fmt.Errorf("generate nonce: %w", err)
+	}
+
+	nonce := hex.EncodeToString(b)
+	return a, nonce, nil
+}
+
+func (s *Service) VerifyChallenge(ctx context.Context, agentIDStr string, nonce string, signatureBase64 string) (*Agent, error) {
+	agentID, err := uuid.Parse(strings.TrimSpace(agentIDStr))
+	if err != nil {
+		return nil, fmt.Errorf("invalid agent id")
+	}
+
+	if nonce == "" {
+		return nil, fmt.Errorf("invalid challenge session")
+	}
+
+	a, err := s.repo.GetByID(ctx, agentID)
+	if err != nil {
+		return nil, fmt.Errorf("agent not found")
+	}
+
+	if a.PublicKey == "" {
+		return nil, fmt.Errorf("please activate the agent first")
+	}
+
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(a.PublicKey)
+	if err != nil || len(pubKeyBytes) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid stored public key")
+	}
+
+	sigBytes, err := base64.StdEncoding.DecodeString(signatureBase64)
+	if err != nil || len(sigBytes) != ed25519.SignatureSize {
+		return nil, fmt.Errorf("invalid signature format")
+	}
+
+	if !ed25519.Verify(pubKeyBytes, []byte(nonce), sigBytes) {
+		return nil, fmt.Errorf("signature verification failed")
+	}
+
+	_ = s.repo.UpdateLastConnected(ctx, a.ID)
+	return a, nil
+}
+
+
