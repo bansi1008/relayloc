@@ -53,6 +53,9 @@ func SaveCredentials(filePath string, creds Credentials) error {
 func GetCredentialsByName(filePath string, name string) (*Credentials, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("credentials file %q not found", filePath)
+		}
 		return nil, fmt.Errorf("read credentials: %w", err)
 	}
 
@@ -77,5 +80,5 @@ func GetCredentialsByName(filePath string, name string) (*Credentials, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("credentials for agent %q not found in local store", name)
+	return nil, fmt.Errorf("agent %q is not found in credentials store", name)
 }
