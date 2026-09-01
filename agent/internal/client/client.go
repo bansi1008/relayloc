@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 
@@ -165,14 +166,12 @@ func (c *Client) Read() error {
 			log.Println("PONG sent")
 
 		case protocol.HTTPReqFrame:
-			fmt.Println("got req fram")
 			var req protocol.HTTPReq
 
 			if err := json.Unmarshal(frame.Payload, &req); err != nil {
-				return err
-
+				continue
 			}
-			//log.Printf("HTTP request received: %s %s", req.Method, req.Path)
+
 			path := req.Path
 			if !strings.HasPrefix(path, "/") {
 				path = "/" + path
@@ -184,7 +183,6 @@ func (c *Client) Read() error {
 				url += "?" + req.Query
 			}
 
-			log.Printf("urllllll %s", url)
 			httpReq, err := http.NewRequest(
 				req.Method,
 				url,
@@ -192,10 +190,26 @@ func (c *Client) Read() error {
 			)
 
 			if err != nil {
-				return err
+				res := protocol.HTTPRes{
+					ID:     req.ID,
+					Status: http.StatusInternalServerError,
+					Header: map[string][]string{"Content-Type": {"text/plain"}},
+					Body:   []byte(fmt.Sprintf("Failed to create local request: %v", err)),
+				}
+				if payload, err := json.Marshal(res); err == nil {
+					_ = c.WriteFrame(protocol.Frame{
+						Type:    protocol.HTTPResFrame,
+						Payload: payload,
+					})
+				}
+				continue
 			}
+
+			httpReq.Host = "localhost:3000"
+
 			for key, values := range req.Header {
-				if strings.EqualFold(key, "Accept-Encoding") {
+				lowerKey := strings.ToLower(key)
+				if lowerKey == "accept-encoding" || lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "content-length" {
 					continue
 				}
 
@@ -204,30 +218,62 @@ func (c *Client) Read() error {
 				}
 			}
 
+			httpReq.ContentLength = int64(len(req.Body))
+			if len(req.Body) > 0 {
+				httpReq.Body = io.NopCloser(bytes.NewReader(req.Body))
+				httpReq.GetBody = func() (io.ReadCloser, error) {
+					return io.NopCloser(bytes.NewReader(req.Body)), nil
+				}
+			}
+
 			httpReq.Header.Set("Accept-Encoding", "identity")
-			// log.Println("Agent method:", httpReq.Method)
-			// log.Println("Agent headers:", httpReq.Header)
-			// log.Println("Agent body:", string(req.Body))
-			resp, err := http.DefaultClient.Do(httpReq)
-			log.Printf("Local response status: %d", resp.StatusCode)
-			log.Printf("Local response Content-Type: %q", resp.Header.Get("Content-Type"))
-			log.Printf("Local response Content-Encoding: %q", resp.Header.Get("Content-Encoding"))
-			log.Printf("Local response Content-Length: %q", resp.Header.Get("Content-Length"))
+
+			log.Printf("Forwarding %s %s (body bytes: %d, Content-Type: %q)", req.Method, url, len(req.Body), httpReq.Header.Get("Content-Type"))
+
+			resp, err := localHTTPClient.Do(httpReq)
 			if err != nil {
-				return err
+				log.Printf("Local request failed: %v", err)
+				res := protocol.HTTPRes{
+					ID:     req.ID,
+					Status: http.StatusBadGateway,
+					Header: map[string][]string{"Content-Type": {"text/plain"}},
+					Body:   []byte(fmt.Sprintf("Bad Gateway: %v", err)),
+				}
+				if payload, err := json.Marshal(res); err == nil {
+					_ = c.WriteFrame(protocol.Frame{
+						Type:    protocol.HTTPResFrame,
+						Payload: payload,
+					})
+				}
+				continue
 			}
 			defer resp.Body.Close()
+
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				return err
+				log.Printf("Failed to read local response body: %v", err)
+				body = []byte{}
 			}
-			log.Printf("Body first 20 bytes: %q", body[:min(20, len(body))])
-			log.Printf("Body size: %d", len(body))
 
 			headers := make(map[string][]string)
-
 			for key, values := range resp.Header {
-				headers[key] = values
+				lowerKey := strings.ToLower(key)
+				if lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "transfer-encoding" {
+					continue
+				}
+
+				newValues := make([]string, len(values))
+				for i, v := range values {
+					if lowerKey == "location" {
+						v = strings.ReplaceAll(v, "http://localhost:3000", "")
+						v = strings.ReplaceAll(v, "http://127.0.0.1:3000", "")
+						if v == "" {
+							v = "/"
+						}
+					}
+					newValues[i] = v
+				}
+				headers[key] = newValues
 			}
 
 			res := protocol.HTTPRes{
@@ -238,19 +284,26 @@ func (c *Client) Read() error {
 			}
 			payload, err := json.Marshal(res)
 			if err != nil {
-				return err
+				log.Printf("Failed to marshal response: %v", err)
+				continue
 			}
 			if err := c.WriteFrame(protocol.Frame{
 				Type:    protocol.HTTPResFrame,
 				Payload: payload,
 			}); err != nil {
+				log.Printf("Failed to write response frame: %v", err)
 				return err
 			}
 
 		}
 	}
+}
 
-	//return nil
+var localHTTPClient = &http.Client{
+	CheckRedirect: func(req *http.Request, via []*http.Request) error {
+		return http.ErrUseLastResponse
+	},
+	Timeout: 15 * time.Second,
 }
 func (c *Client) WriteFrame(frame protocol.Frame) error {
 	data, err := protocol.Encode(frame)

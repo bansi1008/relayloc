@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"os"
 
 	"relaygo/agent/internal/client"
@@ -13,47 +12,65 @@ import (
 )
 
 func main() {
-	if len(os.Args) < 3 || os.Args[1] != "connect" {
-		fmt.Println("Usage:")
-		fmt.Println("  First-time activation: agent connect <email> <agent_name> <token>")
-		fmt.Println("  Connect active agent:   agent connect <agent_name>")
+	args := os.Args[1:]
+	if len(args) > 0 && args[0] == "agent" {
+		args = args[1:]
+	}
+
+	if len(args) == 0 {
+		fmt.Println("Error: no command provided")
+		printUsage()
 		os.Exit(1)
 	}
 
-	if len(os.Args) == 3 {
-		agentName := os.Args[2]
+	if args[0] != "connect" {
+		fmt.Printf("Error: unknown command %q\n", args[0])
+		printUsage()
+		os.Exit(1)
+	}
+
+	if len(args) == 2 {
+		agentName := args[1]
 
 		creds, err := store.GetCredentialsByName("credentials.json", agentName)
 		if err != nil {
-			log.Fatalf("Failed to load credentials for %q: %v\nPlease activate first using: agent connect <email> <agent_name> <token>", agentName, err)
+			fmt.Printf("Error: agent %q is not activated on this machine.\n", agentName)
+			fmt.Printf("Details: %v\n", err)
+			fmt.Println("\nTo activate, run:")
+			fmt.Println("  agent connect <email> <agent_name> <token>")
+			os.Exit(1)
 		}
 
 		c := client.NewClient("ws://localhost:8080/ws")
 		c.SetChallengeCredentials(creds.AgentID, creds.PrivateKey)
 
 		if err := c.Connect(); err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: unable to connect to relay server: %v\n", err)
+			os.Exit(1)
 		}
 		defer c.Close()
 
 		if err := c.RequestChallenge(creds.AgentID); err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: failed to send challenge request: %v\n", err)
+			os.Exit(1)
 		}
 
 		if err := c.Read(); err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
 		}
 		return
 	}
 
-	if len(os.Args) == 5 {
-		email := os.Args[2]
-		agentName := os.Args[3]
-		token := os.Args[4]
+	if len(args) == 4 {
+		email := args[1]
+		agentName := args[2]
+		token := args[3]
 
 		pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: failed to generate key pair: %v\n", err)
+			os.Exit(1)
 		}
 
 		pubKeyStr := base64.StdEncoding.EncodeToString(pubKey)
@@ -63,23 +80,32 @@ func main() {
 		c.SetKeys(pubKeyStr, privKeyStr, "credentials.json")
 
 		if err := c.Connect(); err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: unable to connect to relay server: %v\n", err)
+			os.Exit(1)
 		}
 		defer c.Close()
 
 		if err := c.Authenticate(email, agentName, token, pubKeyStr); err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: failed to send authentication request: %v\n", err)
+			os.Exit(1)
 		}
 
 		if err := c.Read(); err != nil {
-			log.Fatal(err)
+			fmt.Printf("Error: %v\n", err)
+			os.Exit(1)
 		}
 		return
 	}
 
-	fmt.Println("Usage:")
-	fmt.Println("  First-time activation: agent connect <email> <agent_name> <token>")
-	fmt.Println("  Connect active agent:   agent connect <agent_name>")
+	fmt.Println("Error: invalid number of arguments for 'connect'")
+	printUsage()
 	os.Exit(1)
 }
+
+func printUsage() {
+	fmt.Println("\nUsage:")
+	fmt.Println("  First-time activation:  agent connect <email> <agent_name> <token>")
+	fmt.Println("  Connect active agent:    agent connect <agent_name>")
+}
+
 
